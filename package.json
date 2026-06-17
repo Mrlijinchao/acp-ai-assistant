@@ -1,0 +1,198 @@
+{
+  "name": "acp-ai-assistant",
+  "displayName": "ACP AI Assistant",
+  "description": "AI Programming Assistant using Agent Communication Protocol",
+  "version": "0.0.1",
+  "publisher": "yourname",
+  "engines": {
+    "vscode": "^1.120.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "activationEvents": [
+    "onView:acp-chat-view"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "acp-assistant",
+          "title": "AI Assistant",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "acp-assistant": [
+        {
+          "type": "webview",
+          "id": "acp-chat-view",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "acp.startAgent",
+        "title": "Start Agent",
+        "category": "ACP"
+      },
+      {
+        "command": "acp.stopAgent",
+        "title": "Stop Agent",
+        "category": "ACP"
+      },
+      {
+        "command": "acp.clearHistory",
+        "title": "Clear Chat History",
+        "category": "ACP"
+      },
+      {
+        "command": "acp.showStatus",
+        "title": "Show Agent Status",
+        "category": "ACP"
+      },
+      {
+        "command": "acp.exportHistory",
+        "title": "Export Chat History",
+        "category": "ACP"
+      },
+      {
+        "command": "acp.importHistory",
+        "title": "Import Chat History",
+        "category": "ACP"
+      },
+      {
+        "command": "acp.sendSelection",
+        "title": "Send Selected Code to Agent",
+        "category": "ACP"
+      },
+      {
+        "command": "acp.explainCode",
+        "title": "Explain Selected Code",
+        "category": "ACP"
+      },
+      {
+        "command": "acp.refactorCode",
+        "title": "Refactor Selected Code",
+        "category": "ACP"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "acp.sendSelection",
+          "when": "editorHasSelection",
+          "group": "ACP"
+        },
+        {
+          "command": "acp.explainCode",
+          "when": "editorHasSelection",
+          "group": "ACP"
+        },
+        {
+          "command": "acp.refactorCode",
+          "when": "editorHasSelection",
+          "group": "ACP"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "acp.sendSelection",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "acp.explainCode",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorHasSelection"
+      }
+    ],
+    "configuration": {
+      "title": "ACP AI Assistant",
+      "properties": {
+        "acp.agent.command": {
+          "type": "string",
+          "default": "node",
+          "description": "Command to run the agent"
+        },
+        "acp.agent.args": {
+          "type": "array",
+          "default": [
+            "./agent.js"
+          ],
+          "description": "Arguments for the agent command"
+        },
+        "acp.agent.env": {
+          "type": "object",
+          "default": {},
+          "description": "Environment variables for the agent"
+        },
+        "acp.debug": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable debug logging"
+        },
+        "acp.maxHistory": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum number of messages to keep in history"
+        },
+        "acp.mcp.port": {
+          "type": "number",
+          "default": 9876,
+          "description": "Port for MCP server"
+        },
+        "acp.toolApproval.enabled": {
+                "type": "boolean",
+                "default": true,
+                "description": "Require user approval for tool calls"
+        },
+        "acp.toolApproval.timeout": {
+          "type": "number",
+          "default": 30,
+          "description": "Timeout in seconds for tool approval requests"
+        },
+        "acp.toolApproval.autoApprove": {
+          "type": "array",
+          "default": [],
+          "description": "List of tool names that are automatically approved"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.19.21",
+    "@types/vscode": "^1.120.0",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.9.2",
+    "copy-webpack-plugin": "^14.0.0",
+    "eslint": "^9.39.3",
+    "glob": "^13.0.6",
+    "ts-loader": "^9.6.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "webpack": "^5.107.2",
+    "webpack-cli": "^6.0.1"
+  }
+}
