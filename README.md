@@ -26,10 +26,16 @@ Configure the extension in VSCode settings:
 
 ```json
 {
-    "acp.agent.command": "node",
-    "acp.agent.args": ["path/to/agent/server.js"],
-    "acp.agent.env": {
-        "API_KEY": "your-api-key"
-    },
-    "acp.debug": true
+    "acp.deep.agents": {
+        "qwen-agent": {
+            "command": "python",
+            "args": ["D:\\Data\\project\\vscode\\python_acp\\server.py"],
+            "env": {
+                "DASHSCOPE_API_KEY": "xxxxxxx",
+                "QWEN_MODEL": "qwen-plus",
+                "MCP_SERVER_URL": "http://localhost:9876"
+            }
+        }
+    }
 }
+```
