@@ -10,13 +10,67 @@ export interface PendingToolCall {
     timestamp: number;
 }
 
+export interface ApprovalSession {
+    sessionId: string;
+    autoApprove: boolean; // 是否自动批准本次会话中的所有工具
+    approvedTools: Set<string>; // 已批准的工具列表（用于记录）
+    startTime: number;
+}
+
 export class ToolApprovalManager extends EventEmitter {
     private pendingCalls: Map<string, PendingToolCall> = new Map();
     private callIdCounter = 0;
 
+    // 当前会话的审批状态
+    private currentSession: ApprovalSession | null = null;
+    private sessionIdCounter = 0;
+
     constructor() {
         super();
     }
+
+    /**
+     * 开始一个新的会话（任务）
+     */
+    startNewSession(): string {
+        const sessionId = `session-${++this.sessionIdCounter}-${Date.now()}`;
+        this.currentSession = {
+            sessionId,
+            autoApprove: false,
+            approvedTools: new Set<string>(),
+            startTime: Date.now()
+        };
+        this.emit('sessionStarted', { sessionId });
+        return sessionId;
+    }
+
+    /**
+     * 结束当前会话
+     */
+    endSession(): void {
+        if (this.currentSession) {
+            // 取消所有待处理的调用
+            this.cancelAllPending();
+            const sessionInfo = { ...this.currentSession };
+            this.currentSession = null;
+            this.emit('sessionEnded', sessionInfo);
+        }
+    }
+
+    /**
+     * 获取当前会话ID
+     */
+    getCurrentSessionId(): string | null {
+        return this.currentSession?.sessionId || null;
+    }
+
+    /**
+     * 检查当前会话是否处于自动批准模式
+     */
+    isAutoApprove(): boolean {
+        return this.currentSession?.autoApprove || false;
+    }
+
 
     /**
      * 请求工具调用审批
@@ -25,6 +79,13 @@ export class ToolApprovalManager extends EventEmitter {
      * @returns Promise<boolean> - true 表示批准，false 表示拒绝
      */
     async requestApproval(toolName: string, args: any): Promise<boolean> {
+
+        // 如果当前会话是自动批准模式，直接批准
+        if (this.isAutoApprove()) {
+            this.emit('autoApproved', { toolName, args, sessionId: this.currentSession?.sessionId });
+            return true;
+        }
+
         const callId = `tool-${++this.callIdCounter}-${Date.now()}`;
         
         return new Promise((resolve) => {
@@ -59,7 +120,11 @@ export class ToolApprovalManager extends EventEmitter {
         // 显示带有详细信息的对话框
         const actions: vscode.MessageItem[] = [
             { 
-                title: '✅ Approve', 
+                title: '✅ Approve Once', 
+                isCloseAffordance: false 
+            },
+            { 
+                title: '✅ Approve All in Session', 
                 isCloseAffordance: false 
             },
             { 
@@ -80,7 +145,8 @@ export class ToolApprovalManager extends EventEmitter {
         if (selection?.title === '📋 Show Details') {
             // 显示详细参数
             const detailActions: vscode.MessageItem[] = [
-                { title: '✅ Approve', isCloseAffordance: false },
+                { title: '✅ Approve Once', isCloseAffordance: false },
+                { title: '✅ Approve All in Session', isCloseAffordance: false },
                 { title: '❌ Deny', isCloseAffordance: false }
             ];
             
@@ -90,12 +156,18 @@ export class ToolApprovalManager extends EventEmitter {
                 ...detailActions
             );
             
-            if (detailSelection?.title === '✅ Approve') {
+            if (detailSelection?.title === '✅ Approve Once') {
+                this.approveCall(callId);
+            } else if (detailSelection?.title === '✅ Approve All in Session') {
+                this.enableAutoApprove();
                 this.approveCall(callId);
             } else {
                 this.rejectCall(callId);
             }
-        } else if (selection?.title === '✅ Approve') {
+        } else if (selection?.title === '✅ Approve Once') {
+            this.approveCall(callId);
+        } else if (selection?.title === '✅ Approve All in Session') {
+            this.enableAutoApprove();
             this.approveCall(callId);
         } else {
             this.rejectCall(callId);
@@ -107,6 +179,10 @@ export class ToolApprovalManager extends EventEmitter {
         if (pending) {
             pending.resolve(true);
             this.pendingCalls.delete(callId);
+            // 记录已批准的工具
+            if (this.currentSession) {
+                this.currentSession.approvedTools.add(pending.toolName);
+            }
             this.emit('approved', { callId, toolName: pending.toolName });
         }
     }
@@ -117,6 +193,33 @@ export class ToolApprovalManager extends EventEmitter {
             pending.resolve(false);
             this.pendingCalls.delete(callId);
             this.emit('rejected', { callId, toolName: pending.toolName });
+        }
+    }
+
+    /**
+     * 启用自动批准模式（当前会话中所有工具调用自动批准）
+     */
+    private enableAutoApprove(): void {
+        if (this.currentSession) {
+            this.currentSession.autoApprove = true;
+            vscode.window.showInformationMessage(
+                `✅ All tools will be automatically approved for this session`
+            );
+            this.emit('autoApproveEnabled', { 
+                sessionId: this.currentSession.sessionId 
+            });
+        }
+    }
+
+    /**
+     * 禁用自动批准模式
+     */
+    disableAutoApprove(): void {
+        if (this.currentSession) {
+            this.currentSession.autoApprove = false;
+            this.emit('autoApproveDisabled', { 
+                sessionId: this.currentSession.sessionId 
+            });
         }
     }
 
@@ -137,5 +240,16 @@ export class ToolApprovalManager extends EventEmitter {
 
     isPending(callId: string): boolean {
         return this.pendingCalls.has(callId);
+    }
+    /**
+     * 获取当前会话信息
+     */
+    getSessionInfo(): { sessionId: string; autoApprove: boolean; approvedTools: string[] } | null {
+        if (!this.currentSession) return null;
+        return {
+            sessionId: this.currentSession.sessionId,
+            autoApprove: this.currentSession.autoApprove,
+            approvedTools: Array.from(this.currentSession.approvedTools)
+        };
     }
 }

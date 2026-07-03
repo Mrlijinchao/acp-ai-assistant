@@ -4,6 +4,10 @@ import { Configuration } from '../config/Configuration';
 import { Logger } from '../utils/logger';
 import type { SessionInfo, AgentEvent } from './types';
 import { ToolManager } from '../tools';
+import { FileBackupManager } from '../tools/FileBackupManager';
+import { ChatHistory } from '../storage/ChatHistory';
+
+import * as path from 'path';  // 添加 path 导入
 
 export class AgentManager {
     private client: AgentClient | null = null;
@@ -12,10 +16,13 @@ export class AgentManager {
     private logger: Logger;
     private toolManager: ToolManager | null = null;
     private isStarting = false;
+    private currentTaskId: string | null = null; // 当前任务ID
+    private backupManager: FileBackupManager | null = null;
+    private chatHistory: ChatHistory| null = null;
 
-    constructor(private configuration: Configuration) {
+    constructor(private configuration: Configuration, chatHistory: ChatHistory) {
         this.logger = new Logger('AgentManager');
-        this.toolManager = new ToolManager(9876);
+        this.chatHistory = chatHistory;
     }
 
      async start(agentName: string): Promise<void> {
@@ -31,11 +38,21 @@ export class AgentManager {
         this.isStarting = true;
 
         try {
+
+            // 初始化备份管理器
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (workspaceFolders && workspaceFolders.length > 0) {
+                const workspaceRoot = workspaceFolders[0].uri.fsPath;
+                this.backupManager = new FileBackupManager(workspaceRoot);
+                this.setupBackupManagerListeners()
+            }
+
+
             // 确保旧的 MCP Server 已停止
             await this.stopMcpServer();
             
             // 创建新的 MCP Server
-            this.toolManager = new ToolManager(9876);
+            this.toolManager = new ToolManager(9876, this.backupManager);
             await this.toolManager.start();
             this.logger.info(`MCP Server started on port ${this.toolManager.getPort()}`);
 
@@ -53,11 +70,306 @@ export class AgentManager {
             
             await this.client.start(mcpServerUrl);
             await this.performHandshake();
+            // 开始一个新的审批会话（任务）
+            this.startNewTask();
+
         } catch (error) {
             this.logger.error('Failed to start agent:', error);
             throw error;
         } finally {
             this.isStarting = false;
+        }
+    }
+
+
+    /**
+     * ⭐ 获取修改列表（不触发事件）
+     */
+    async getPendingChanges(): Promise<any[]> {
+        if (!this.backupManager) {
+            return [];
+        }
+
+        // ✅ 使用 getChangesWithoutEvent 而不是 detectChanges
+        const changes = await this.backupManager.getChangesWithoutEvent();
+        return changes
+            .filter(c => c.type !== 'unchanged')
+            .map(c => ({
+                filePath: c.filePath,
+                type: c.type,
+                status: 'pending',
+                description: c.type === 'created' ? '创建新文件' :
+                            c.type === 'modified' ? '修改文件' :
+                            '删除文件'
+            }));
+    }
+
+    /**
+     * ⭐ 发送待确认修改到 UI
+     */
+    private async sendPendingChangesToUI(): Promise<void> {
+        const changes = await this.getPendingChanges();
+        this.emit('updateChanges', {
+            type: 'updateChanges',
+            changes: changes
+        });
+        this.logger.info(`Sent ${changes.length} pending changes to UI`);
+    }
+
+    /**
+     * 设置备份管理器事件监听
+     */
+    private setupBackupManagerListeners(): void {
+        if (!this.backupManager) return;
+
+        // ✅ 监听 fileChanged 事件
+        this.backupManager.on('fileChanged', (data) => {
+            this.logger.info(`File changed detected: ${data.filePath}`);
+            
+            // ✅ 不要在这里调用 sendPendingChangesToUI
+            // 而是直接发送变化数据到 UI
+            const changes = data.allChanges
+                .filter((c: any) => c.type !== 'unchanged')
+                .map((c: any) => ({
+                    filePath: c.filePath,
+                    type: c.type,
+                    status: 'pending',
+                    description: c.type === 'created' ? '创建新文件' :
+                                c.type === 'modified' ? '修改文件' :
+                                '删除文件'
+                }));
+            
+            // 直接发送到 UI，避免通过 getPendingChanges 再次触发
+            this.emit('updateChanges', {
+                type: 'updateChanges',
+                changes: changes
+            });
+        });
+
+        // ✅ 监听 rollbackCompleted
+        this.backupManager.on('rollbackCompleted', (data) => {
+            this.logger.info(`Rollback completed: ${data.success}`);
+            this.emit('rollbackCompleted', {
+                type: 'rollbackCompleted',
+                success: data.success,
+                errors: data.errors
+            });
+            this.emit('changesRolledBack', {
+                type: 'changesRolledBack',
+                transactionId: this.currentTaskId || null
+            });
+            // ✅ 回滚完成后刷新 UI
+            this.sendPendingChangesToUI();
+        });
+
+        // ✅ 监听 commitCompleted
+        this.backupManager.on('commitCompleted', (data) => {
+            this.logger.info(`Commit completed: ${data.changes.length} changes`);
+            this.emit('commitCompleted', {
+                type: 'commitCompleted',
+                changes: data.changes
+            });
+            this.emit('changesCommitted', {
+                type: 'changesCommitted',
+                transactionId: this.currentTaskId || null,
+                changes: data.changes
+            });
+            // ✅ 提交完成后刷新 UI（此时没有变化了）
+            this.sendPendingChangesToUI();
+        });
+
+        // ✅ 监听 fileBackedUp（备份完成，可能有变化）
+        this.backupManager.on('fileBackedUp', (data) => {
+            this.logger.info(`File backed up: ${data.filePath}`);
+            // 延迟一点再刷新，等文件操作完成
+            setTimeout(() => {
+                this.sendPendingChangesToUI();
+            }, 100);
+        });
+    }
+
+    /**
+     * 回滚修改
+     */
+    async rollbackChanges(): Promise<void> {
+        if (!this.backupManager) {
+            vscode.window.showWarningMessage('没有活跃的备份');
+            return;
+        }
+
+        const result = await this.backupManager.rollbackAll();
+        if (result.success) {
+            vscode.window.showInformationMessage('✅ 已回滚所有修改');
+            this.emit('rollbackCompleted', {
+                type: 'rollbackCompleted',
+                success: true
+            });
+            // 同时触发 changesRolledBack
+            this.emit('changesRolledBack', {
+                type: 'changesRolledBack',
+                transactionId: this.currentTaskId || null
+            });
+        } else {
+            vscode.window.showErrorMessage(`回滚失败: ${result.errors?.join(', ') || '未知错误'}`);
+            this.emit('rollbackCompleted', {
+                type: 'rollbackCompleted',
+                success: false,
+                errors: result.errors
+            });
+        }
+    }
+
+    /**
+     * 提交修改
+     */
+    commitChanges(): void {
+        if (!this.backupManager) {
+            vscode.window.showWarningMessage('没有活跃的备份');
+            return;
+        }
+
+        const stats = this.backupManager.getStats();
+        if (stats.total === 0) {
+            vscode.window.showInformationMessage('没有需要提交的修改');
+            return;
+        }
+
+        this.backupManager.commitAll();
+        vscode.window.showInformationMessage(`✅ 已提交 ${stats.total} 个文件的修改`);
+    }
+
+    /**
+     * ⭐ 显示文件差分（使用 VSCode 内置 Diff 工具）
+     */
+    async showFileDiff(filePath: string): Promise<void> {
+        if (!this.backupManager) {
+            vscode.window.showWarningMessage('没有备份管理器');
+            return;
+        }
+
+        const backup = this.backupManager.getBackup(filePath);
+        if (!backup) {
+            vscode.window.showWarningMessage(`文件 ${filePath} 没有备份，无法查看差分`);
+            return;
+        }
+
+        // 获取当前文件内容
+        let currentContent = '';
+        let fileExists = true;
+        try {
+            const uri = vscode.Uri.file(filePath);
+            const data = await vscode.workspace.fs.readFile(uri);
+            currentContent = Buffer.from(data).toString('utf8');
+        } catch (error) {
+            fileExists = false;
+            currentContent = ''; // 文件已被删除
+        }
+
+        // 原始内容（备份的内容）
+        const originalContent = backup.originalContent.toString('utf8');
+
+        // 如果文件不存在，用空内容
+        if (!fileExists && backup.isNewFile) {
+            // 新文件被删除了，显示空内容
+            vscode.window.showWarningMessage(`文件 ${path.basename(filePath)} 已被删除`);
+        }
+
+        // 创建虚拟 URI 显示原始内容（左侧）
+        const originalUri = vscode.Uri.parse(
+            `memfs:/original-${Date.now()}/${path.basename(filePath)}`
+        );
+
+        // 当前文件 URI（右侧）
+        const currentUri = vscode.Uri.file(filePath);
+
+        // 注册虚拟文件内容提供者
+        const provider = new (class implements vscode.TextDocumentContentProvider {
+            onDidChangeEmitter = new vscode.EventEmitter<vscode.Uri>();
+            onDidChange = this.onDidChangeEmitter.event;
+
+            provideTextDocumentContent(uri: vscode.Uri): string {
+                return originalContent;
+            }
+        })();
+
+        const providerRegistration = vscode.workspace.registerTextDocumentContentProvider(
+            'memfs', 
+            provider
+        );
+
+        try {
+            // ⭐ 使用 VSCode 内置的 diff 命令
+            await vscode.commands.executeCommand(
+                'vscode.diff',
+                originalUri,
+                currentUri,
+                `📊 ${path.basename(filePath)} (原始 ↔ 当前)`,
+                { preview: true }
+            );
+        } catch (error) {
+            vscode.window.showErrorMessage(`打开差分失败: ${error}`);
+        } finally {
+            // 延迟释放，让 diff 视图能正常显示
+            setTimeout(() => {
+                providerRegistration.dispose();
+            }, 5000);
+        }
+    }
+
+
+     /**
+     * 开始新任务
+     */
+    private startNewTask(): void {
+        if (this.toolManager) {
+            this.currentTaskId = this.toolManager.getApprovalManager().startNewSession();
+            this.logger.info(`Started new task session: ${this.currentTaskId}`);
+            this.emit('taskStarted', { 
+                type: 'taskStarted', 
+                taskId: this.currentTaskId 
+            });
+        }
+    }
+
+    /**
+     * 结束当前任务
+     */
+    private endTask(): void {
+        if (this.toolManager) {
+            this.toolManager.getApprovalManager().endSession();
+            this.logger.info(`Ended task session: ${this.currentTaskId}`);
+            this.currentTaskId = null;
+        }
+    }
+
+    /**
+     * 获取当前任务ID
+     */
+    getCurrentTaskId(): string | null {
+        return this.currentTaskId;
+    }
+
+    /**
+     * 获取当前任务的审批状态
+     */
+    getApprovalStatus(): { autoApprove: boolean; approvedTools: string[] } | null {
+        if (!this.toolManager) return null;
+        const sessionInfo = this.toolManager.getApprovalManager().getSessionInfo();
+        if (!sessionInfo) return null;
+        return {
+            autoApprove: sessionInfo.autoApprove,
+            approvedTools: sessionInfo.approvedTools
+        };
+    }
+
+    /**
+     * 禁用自动批准
+     */
+    disableAutoApprove(): void {
+        if (this.toolManager) {
+            this.toolManager.getApprovalManager().disableAutoApprove();
+            this.emit('autoApproveDisabled', { type: 'autoApproveDisabled' });
+            vscode.window.showInformationMessage('Auto-approval disabled for current task');
         }
     }
 
@@ -117,6 +429,8 @@ export class AgentManager {
             this.logger.info('Client stopped:', data);
             this.emit('stopped', { type: 'stopped', code: data.code });
             this.sessionInfo = null;
+            // 结束任务
+            this.endTask();
         });
 
         this.client.on('notification', (notification) => {
@@ -131,6 +445,30 @@ export class AgentManager {
             });
             approvalManager.on('rejected', (data) => {
                 this.emit('toolRejected', { callId: data.callId, toolName: data.toolName });
+            });
+            approvalManager.on('autoApproved', (data) => {
+                this.emit('toolAutoApproved', {
+                    type: 'toolAutoApproved',
+                    toolName: data.toolName,
+                    sessionId: data.sessionId
+                });
+            });
+
+            approvalManager.on('autoApproveEnabled', (data) => {
+                this.emit('autoApproveEnabled', {
+                    type: 'autoApproveEnabled',
+                    sessionId: data.sessionId
+                });
+                vscode.window.showInformationMessage(
+                    `✅ Auto-approval enabled for this task`
+                );
+            });
+
+            approvalManager.on('autoApproveDisabled', (data) => {
+                this.emit('autoApproveDisabled', {
+                    type: 'autoApproveDisabled',
+                    sessionId: data.sessionId
+                });
             });
         }
     }
@@ -268,19 +606,58 @@ export class AgentManager {
         }
     }
 
+    // async sendPrompt(text: string): Promise<void> {
+    //     if (!this.client || !this.sessionInfo) {
+    //         throw new Error('Agent not ready');
+    //     }
+
+    //     this.logger.info('Sending prompt:', text);
+    //     // 确保有活动任务
+    //     if (!this.currentTaskId) {
+    //         this.startNewTask();
+    //     }
+    //     await this.client.request('session/prompt', {
+    //         sessionId: this.sessionInfo.id,
+    //         prompt: [{ type: 'text', text }]
+    //     });
+    // }
+
+    // AgentManager.ts
     async sendPrompt(text: string): Promise<void> {
         if (!this.client || !this.sessionInfo) {
             throw new Error('Agent not ready');
         }
 
         this.logger.info('Sending prompt:', text);
+        if (!this.currentTaskId) {
+            this.startNewTask();
+        }
+        
+        // ✅ 获取当前聊天会话ID
+        const currentSessionId = this.chatHistory?.getCurrentSessionId() || 'default-session';
+        if (!currentSessionId) {
+            throw new Error('No active chat session');
+        }
+        
+        // ✅ 在请求中传递会话ID
         await this.client.request('session/prompt', {
-            sessionId: this.sessionInfo.id,
-            prompt: [{ type: 'text', text }]
+            sessionId: currentSessionId,
+            prompt: [{ type: 'text', text }],
         });
     }
 
+
+    /**
+     * 停止 Agent（扩展）
+     */
     stop(): void {
+
+        this.doStop();
+    }
+
+    private doStop(): void {
+        // 结束当前任务
+        this.endTask();
         if (this.client) {
             this.client.stop();
             this.client = null;
@@ -291,7 +668,11 @@ export class AgentManager {
             this.toolManager.stop();
             this.toolManager = null;
         }
+        this.currentTaskId = null;
+        
+    
     }
+
 
     isRunning(): boolean {
         return this.client?.isRunning() ?? false;
@@ -340,4 +721,19 @@ interface AgentEventMap {
     toolApproved: { callId: string; toolName: string };
     toolRejected: { callId: string; toolName: string };
     toolApprovalRequest: { callId: string; toolName: string; args: any };
+    toolAutoApproved: { type: 'toolAutoApproved'; toolName: string; sessionId: string };
+    autoApproveEnabled: { type: 'autoApproveEnabled'; sessionId: string };
+    autoApproveDisabled: { type: 'autoApproveDisabled'; sessionId?: string };
+    taskStarted: { type: 'taskStarted'; taskId: string };
+     // ⭐ 文件变更事件（新增）
+    fileChanged: { type: 'fileChanged'; filePath: string; changeType: string; transactionId: string | null };
+    updateChanges: { type: 'updateChanges'; changes: any[] };
+    
+    // ⭐ 备份/回滚事件（新增）
+    rollbackCompleted: { type: 'rollbackCompleted'; success: boolean; errors?: string[] };
+    commitCompleted: { type: 'commitCompleted'; changes: any[] };
+    changesCommitted: { type: 'changesCommitted'; transactionId: string | null; changes: any[] };
+    changesRolledBack: { type: 'changesRolledBack'; transactionId: string | null };
+   
+    
 }

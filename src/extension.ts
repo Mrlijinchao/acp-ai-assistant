@@ -15,6 +15,7 @@ let logger: Logger;
 export async function activate(context: vscode.ExtensionContext) {
     logger = new Logger('ACP');
     logger.info('Extension activating...');
+
     
     // 初始化模块
     configuration = new Configuration();
@@ -41,6 +42,7 @@ export async function activate(context: vscode.ExtensionContext) {
     commandManager.registerCommands(context);
     
     context.subscriptions.push(chatView);
+
     
     // 监听配置变化
     configuration.onDidChangeConfiguration(() => {
@@ -51,6 +53,8 @@ export async function activate(context: vscode.ExtensionContext) {
             );
         }
     });
+
+
     
     logger.info('Extension activated');
 }

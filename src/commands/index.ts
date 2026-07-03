@@ -70,7 +70,7 @@ export class CommandManager {
     }
 
     private async exportHistory(): Promise<void> {
-        const history = await this.chatHistory.export();
+        const history = await this.chatHistory.exportAllSessions();
         const uri = await vscode.window.showSaveDialog({
             title: 'Export Chat History',
             filters: { 'JSON files': ['json'] },
@@ -93,7 +93,7 @@ export class CommandManager {
         if (uris && uris[0]) {
             const content = await vscode.workspace.fs.readFile(uris[0]);
             const history = Buffer.from(content).toString('utf8');
-            await this.chatHistory.import(history);
+            await this.chatHistory.importSession(history);
             vscode.window.showInformationMessage('📂 History imported successfully');
         }
     }

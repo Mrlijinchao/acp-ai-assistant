@@ -31,6 +31,10 @@
           "type": "webview",
           "id": "acp-chat-view",
           "name": "Chat"
+        },
+         {
+          "id": "acp-file-operation-view",
+          "name": "📂 待确认操作"
         }
       ]
     },

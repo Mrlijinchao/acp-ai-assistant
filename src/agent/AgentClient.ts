@@ -118,7 +118,7 @@ export class AgentClient extends EventEmitter {
         this.emit('notification', notification);
     }
 
-    async request(method: string, params?: any, timeout = 30000): Promise<any> {
+    async request(method: string, params?: any, timeout = 300000): Promise<any> {
         if (!this.process || !this.process.stdin) {
             throw new Error('Agent not running');
         }
