@@ -249,6 +249,7 @@ function setupMessageListener() {
                 break;
             case 'updateSessions':
                 console.log('📋 更新会话列表:', msg.sessions.length, '个会话');
+                console.log(msg.sessions);
                 SessionHandler.updateSessions(msg, vscode);
                 break;
             case 'sessionCreated':

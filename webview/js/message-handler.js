@@ -8,11 +8,84 @@ let currentAssistantDiv = null;
 let currentThoughtDiv = null;
 let currentThoughtContent = '';
 
+// export function addMessage(role, content) {
+//     if (role === 'user') {
+//         currentAssistantDiv = null;
+//         if (window.activeToolCalls) window.activeToolCalls.clear();
+//         currentMsgDiv = null;
+//     }
+    
+//     const div = document.createElement('div');
+//     div.className = 'message ' + role;
+    
+//     if (role === 'assistant') {
+//         const renderedContent = renderMarkdown(content);
+//         div.innerHTML = `
+//             <div class="message-header">Assistant</div>
+//             <div class="tool-calls-container"></div>
+//             <div class="message-content">${renderedContent}</div>
+//         `;
+//         window.currentToolCallsContainer = div.querySelector('.tool-calls-container');
+//         currentAssistantDiv = div;
+//         currentMsgDiv = div.querySelector('.message-content');
+//         highlightCodeBlocks(currentMsgDiv);
+//     } else {
+//         div.innerHTML = `
+//             <div class="message-header">${role === 'user' ? 'You' : 'System'}</div>
+//             <div class="message-content">${escapeHtml(content)}</div>
+//         `;
+//     }
+//     console.log("role: " + role)
+//     console.log(content)
+//     console.log("DOM1:")
+//     console.log(DOM.messagesDiv)
+//     console.log("DIV:")
+//     console.log(div)
+//     DOM.messagesDiv.appendChild(div);
+//     DOM.messagesDiv.scrollTop = DOM.messagesDiv.scrollHeight;
+//     console.log("DOM2:")
+//     console.log(DOM.messagesDiv)
+//     currentThoughtDiv = null;
+//     currentThoughtContent = '';
+    
+//     return div;
+// }
+
+
+// message-handler.js
+
 export function addMessage(role, content) {
+    // 使用 document.getElementById 直接获取
+    const messagesDiv = document.getElementById('messages');
+    
+    if (!messagesDiv) {
+        console.error('❌ messagesDiv not found!');
+        return null;
+    }
+    
+    // 验证 messagesDiv 是否在 DOM 树中
+    console.log('📝 messagesDiv parent:', messagesDiv.parentElement);
+    console.log('📝 messagesDiv is connected:', messagesDiv.isConnected);
+    
+    // 如果不在 DOM 树中，尝试重新获取
+    if (!messagesDiv.isConnected) {
+        console.warn('⚠️ messagesDiv is not connected to DOM, trying to find it again');
+        const newMessagesDiv = document.getElementById('messages');
+        if (newMessagesDiv) {
+            console.log('✅ Found new messagesDiv:', newMessagesDiv);
+            // 使用新的引用继续
+            return addMessageWithDiv(role, content, newMessagesDiv);
+        }
+    }
+    
+    return addMessageWithDiv(role, content, messagesDiv);
+}
+
+function addMessageWithDiv(role, content, messagesDiv) {
     if (role === 'user') {
-        currentAssistantDiv = null;
+        window.currentAssistantDiv = null;
         if (window.activeToolCalls) window.activeToolCalls.clear();
-        currentMsgDiv = null;
+        window.currentMsgDiv = null;
     }
     
     const div = document.createElement('div');
@@ -26,9 +99,9 @@ export function addMessage(role, content) {
             <div class="message-content">${renderedContent}</div>
         `;
         window.currentToolCallsContainer = div.querySelector('.tool-calls-container');
-        currentAssistantDiv = div;
-        currentMsgDiv = div.querySelector('.message-content');
-        highlightCodeBlocks(currentMsgDiv);
+        window.currentAssistantDiv = div;
+        window.currentMsgDiv = div.querySelector('.message-content');
+        highlightCodeBlocks(window.currentMsgDiv);
     } else {
         div.innerHTML = `
             <div class="message-header">${role === 'user' ? 'You' : 'System'}</div>
@@ -36,12 +109,19 @@ export function addMessage(role, content) {
         `;
     }
     
-    DOM.messagesDiv.appendChild(div);
-    DOM.messagesDiv.scrollTop = DOM.messagesDiv.scrollHeight;
+    // 使用 appendChild 并验证是否成功
+    console.log('📝 Before appendChild, messagesDiv children:', messagesDiv.children.length);
+    messagesDiv.appendChild(div);
+    console.log('📝 After appendChild, messagesDiv children:', messagesDiv.children.length);
+    console.log('📝 New div parent:', div.parentElement);
+    console.log('📝 New div is connected:', div.isConnected);
+    console.log(messagesDiv.children[0])
     
-    currentThoughtDiv = null;
-    currentThoughtContent = '';
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
     
+    window.currentThoughtDiv = null;
+    window.currentThoughtContent = '';
+
     return div;
 }
 

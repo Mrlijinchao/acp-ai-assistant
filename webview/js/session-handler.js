@@ -187,7 +187,7 @@ export function updateSessions(sessionData, vscode) {
 
 export function handleSessionCreated(session) {
     // 清空消息
-    // clearMessages();
+    clearMessages();
     // 更新会话列表
     const updatedSessions = [session, ...DOM.sessions.filter(s => s.id !== session.id)];
     updateSessions({
