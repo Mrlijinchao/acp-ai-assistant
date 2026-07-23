@@ -29,7 +29,7 @@ export function initDomCache() {
     DOM.sessionListWrapper = document.getElementById('sessionListWrapper', true);
     DOM.sessions = [];
     DOM.currentSessionId = null;
-    DOM.isSessionListExpanded = true;
+    DOM.isSessionListExpanded = false;
     
     // 修改面板相关
     DOM.changesList = getElement('changesList');

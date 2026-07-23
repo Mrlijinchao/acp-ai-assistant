@@ -196,20 +196,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this.messageBuffer = '';
             }
             
-            // 更新会话列表
-            await this.loadSessions();
-            
             // 获取最新会话列表
             const sessions = await this.agentManager.loadAllSessions();
             
             if (sessions && sessions.length > 0 && !this.currentSessionId) {
                 // 自动切换到第一个会话
                 const firstSession = sessions[0];
-                await this.handleSwitchSession(firstSession.id);
+                await this.handleSwitchSession(firstSession.sessionId);
             } else if (!sessions || sessions.length === 0) {
                 // 没有会话了，创建一个新会话
                 await this.handleCreateSession('新会话');
             }
+
+            // 更新会话列表
+            await this.loadSessions();
             
         } catch (error) {
             console.error('Failed to delete session:', error);
@@ -217,11 +217,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
 
+    /**
+     * ⭐ 处理重命名会话
+     */
     private async handleRenameSession(sessionId: string, newName: string): Promise<void> {
-        // 注意：ACP 协议可能不支持重命名，这里作为本地功能
-        // 实际实现可能需要通过扩展能力实现
-        console.log('Rename session:', sessionId, '->', newName);
-        await this.loadSessions();
+        try {
+            console.log(`🔄 Renaming session ${sessionId} to "${newName}"`);
+            
+            // 调用 AgentManager 的重命名方法
+            await this.agentManager.renameSession(sessionId, newName);
+            
+            // 如果重命名的是当前会话，更新 currentSessionId
+            if (this.currentSessionId === sessionId) {
+                // 不需要更新 currentSessionId，因为 sessionId 没变
+                // 但可以触发 UI 更新
+            }
+            
+            // 会话列表会在 renameSession 中自动刷新
+            // 但我们可以在这里显式刷新以确保 UI 更新
+            await this.loadSessions();
+            
+        } catch (error) {
+            console.error('Failed to rename session:', error);
+            vscode.window.showErrorMessage(`重命名会话失败: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 
     private async loadSessionMessages(sessionId: string): Promise<void> {
@@ -282,7 +301,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async handleCreateSession(name?: string): Promise<void> {
-        try {
+
             // 先检查当前是否有会话
             const sessions = await this.agentManager.loadAllSessions();
             const sessionCount = Array.isArray(sessions) ? sessions.length : 0;
@@ -418,13 +437,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         });
 
         // 会话删除事件
-        this.agentManager.on('sessionDeleted', (data) => {
-            if (this.currentSessionId === data.sessionId) {
-                this.currentSessionId = null;
-                this.sendToWebview('clearMessages', {});
-            }
-            this.loadSessions();
-        });
+        // this.agentManager.on('sessionDeleted', (data) => {
+        //     if (this.currentSessionId === data.sessionId) {
+        //         this.currentSessionId = null;
+        //         this.sendToWebview('clearMessages', {});
+        //     }
+        //     this.loadSessions();
+        // });
 
         // 会话切换事件
         this.agentManager.on('sessionSwitched', (data) => {
@@ -432,7 +451,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.sendCurrentSession();
         });
         
+        // ⭐ 监听会话重命名事件
+        this.agentManager.on('sessionRenamed', (data) => {
+            console.log(`🔄 Session renamed: ${data.sessionId} -> "${data.newTitle}"`);
+            
+            // 更新当前会话 ID（如果需要）
+            if (this.currentSessionId === data.sessionId) {
+                // sessionId 没变，不需要更新
+            }
+            
+            // 刷新会话列表
+            this.loadSessions();
+            
+            // 通知 Webview 会话已重命名
+            this.sendToWebview('sessionRenamed', {
+                sessionId: data.sessionId,
+                newTitle: data.newTitle
+            });
+        });
+
+
     }
+
+    
 
     private async sendPendingChanges(): Promise<void> {
         const changes = await this.agentManager.getPendingChanges();

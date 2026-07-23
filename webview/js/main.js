@@ -255,11 +255,49 @@ function setupMessageListener() {
             case 'sessionCreated':
                 console.log('✅ 会话已创建:', msg.session.name);
                 clearMessages();
-                // 会话列表会在 updateSessions 中更新
+                
+                // ⭐ 添加新会话到列表
+                const newSession = msg.session;
+                if (newSession) {
+                    // 如果 sessions 不存在，初始化为空数组
+                    if (!DOM.sessions) {
+                        DOM.sessions = [];
+                    }
+                    
+                    // 检查是否已存在（避免重复添加）
+                    const existingIndex = DOM.sessions.findIndex(s => s.id === newSession.id);
+                    if (existingIndex === -1) {
+                        // 不存在则添加到数组最前面
+                        DOM.sessions.unshift(newSession);
+                    } else {
+                        // 已存在则更新
+                        DOM.sessions[existingIndex] = newSession;
+                    }
+                    
+                    // 更新当前会话ID
+                    DOM.currentSessionId = newSession.id;
+                    console.log("DOM.sessions:")
+                    console.log(DOM.sessions)
+                    console.log("DOM.currentSessionId:")
+                    console.log(DOM.currentSessionId)
+                    SessionHandler.updateSessions({
+                            sessions: DOM.sessions,
+                            currentSessionId: DOM.currentSessionId
+                        }, 
+                        vscode);
+                    // // 重新渲染会话列表
+                    // SessionHandler.renderSessionList();
+                }
                 break;
             case 'currentSession':
                 DOM.currentSessionId = msg.sessionId;
                 break;    
+            // ⭐ 处理会话重命名
+            case 'sessionRenamed':
+                console.log(`🔄 Session renamed: ${msg.sessionId} -> "${msg.newTitle}"`);
+                // 刷新会话列表
+                vscode.postMessage({ type: 'loadSessions' });
+                break;
             case 'updateChanges':
                 ChangesHandler.updateChangesPanel(msg.changes, vscode);
                 break;
@@ -278,7 +316,7 @@ function setupMessageListener() {
 }
 
 function clearMessages() {
-    messagesDiv.innerHTML = '';
+    DOM.messagesDiv.innerHTML = '';
     DOM.currentMsgDiv = null;
     DOM.currentAssistantDiv = null;
     DOM.currentThoughtDiv = null;

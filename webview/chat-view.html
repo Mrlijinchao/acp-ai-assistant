@@ -543,8 +543,13 @@
         }
         
         .session-item.active {
+            /* 选中样式 */
             background: var(--vscode-list-activeSelectionBackground);
             color: var(--vscode-list-activeSelectionForeground);
+        }
+
+        .session-item.active:hover {
+            background: var(--vscode-list-activeSelectionBackground);
         }
         
         .session-item .session-name {
@@ -554,6 +559,8 @@
             white-space: nowrap;
             font-size: 12px;
         }
+
+
         
         .session-item .session-info {
             font-size: 10px;
@@ -840,7 +847,7 @@
         </div>
     </div>
 
-    <div class="messages" id="messages">99999999999999999999999999999999</div>
+    <div class="messages" id="messages"></div>
     
     <!-- ⭐ 新增：修改管理面板 -->
     <div class="changes-panel" id="changesPanel">

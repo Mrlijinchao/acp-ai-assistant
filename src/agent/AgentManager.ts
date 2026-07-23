@@ -1034,7 +1034,7 @@ async loadSession(sessionId: string): Promise<any> {
         this.logger.info(`Deleting session: ${sessionId}`);
         
         try {
-            await this.client.request('session/delete', {
+            await this.client.request('_session_delete', {
                 sessionId: sessionId
             });
 
@@ -1118,6 +1118,45 @@ async loadSession(sessionId: string): Promise<any> {
             return [];
         }
 }
+
+    /**
+     * ⭐ 重命名会话
+     */
+    async renameSession(sessionId: string, newTitle: string): Promise<void> {
+        if (!this.client || !this.sessionInfo) {
+            this.logger.warn('Agent not ready, cannot rename session');
+            throw new Error('Agent not ready');
+        }
+
+        this.logger.info(`Renaming session: ${sessionId} -> "${newTitle}"`);
+        
+        try {
+            // ⭐ 修改：直接调用 session_rename，而不是 ext_method
+            const result = await this.client.request('_session_rename', {
+                sessionId: sessionId,
+                title: newTitle
+            });
+            
+            this.logger.info(`Session renamed successfully: ${sessionId}`, result);
+            
+            // 触发重命名事件
+            this.emit('sessionRenamed', {
+                type: 'sessionRenamed',
+                sessionId: sessionId,
+                newTitle: newTitle
+            });
+            
+            // 刷新会话列表
+            await this.loadAllSessions();
+            
+            vscode.window.showInformationMessage(`✅ 会话已重命名为 "${newTitle}"`);
+            
+        } catch (error) {
+            this.logger.error(`Failed to rename session ${sessionId}:`, error);
+            vscode.window.showErrorMessage(`重命名会话失败: ${error instanceof Error ? error.message : String(error)}`);
+            throw error;
+        }
+    }
 
     // ========== 原有的方法 ==========
 
@@ -1683,4 +1722,6 @@ interface AgentEventMap {
     sessionSwitched: { type: 'sessionSwitched'; sessionId: string };
     sessionsListUpdated: { type: 'sessionsListUpdated'; sessions: SessionInfo[] };
     messagesRestored: { type: 'messagesRestored'; sessionId: string; messages: any[] };
+    // ⭐ 新增：会话重命名事件
+    sessionRenamed: { type: 'sessionRenamed'; sessionId: string; newTitle: string };
 }

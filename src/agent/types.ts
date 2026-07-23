@@ -32,9 +32,12 @@ export interface AgentConfig {
 }
 
 export interface SessionInfo {
-    id: string;
+    sessionId: string;
+    messageCount: string;
+    title: string;
     cwd: string;
     createdAt: Date;
+    updatedAt: Date;
 }
 
 export type AgentEvent = 
