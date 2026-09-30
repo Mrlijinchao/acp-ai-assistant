@@ -184,6 +184,7 @@ function setupMessageListener() {
                 break;
                 
             case 'updateAssistantMessage':
+                console.log("updateAssistantMessage: ")
                 MessageHandler.updateAssistantMessage(msg.content);
                 break;
             // 如果需要消息完成事件（可选）
@@ -311,8 +312,90 @@ function setupMessageListener() {
                 vscode.window.showInformationMessage('❌ 所有修改已放弃');
                 ChangesHandler.updateChangesPanel([], vscode);
                 break;
+            case 'generationTruncated':
+                console.log('⚠️ Generation truncated!');
+                showContinueButton();
+                break;
+                
+            case 'truncatedStateChanged':
+                console.log('⚠️ truncatedStateChanged!');
+                if (msg.isTruncated) {
+                    showContinueButton();
+                } else {
+                    hideContinueButton();
+                }
+                break;
+                
+            case 'startAssistantMessage':
+                hideContinueButton();
+                // ... 其他处理 ...
+                break;
+                
+            case 'generationResumed':
+                console.log('✅ Generation resumed');
+                // const button = document.getElementById('continueBtn');
+                // if (button) {
+                //     button.remove();
+                // }
+                // hideContinueButton();
+                // 可以隐藏按钮，因为已经在继续了
+                break;
+            
         }
     });
+}
+
+// 显示继续按钮
+function showContinueButton() {
+
+    const existingBtn = document.getElementById('continueBtnContainer');
+    if (existingBtn) {
+        existingBtn.remove();
+    }
+    
+    const container = document.createElement('div');
+    container.id = 'continueBtnContainer';
+    container.style.cssText = `
+        display: flex;
+        justify-content: center;
+        padding: 8px 0;
+        margin: 4px 0;
+    `;
+    
+    const button = document.createElement('button');
+    button.id = 'continueBtn';
+    button.textContent = '🔄 继续生成';
+    button.style.cssText = `
+        padding: 6px 20px;
+        font-size: 13px;
+        background: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+    `;
+    
+    button.addEventListener('click', () => {
+        console.log('🔄 Continue button clicked');
+        vscode.postMessage({ type: 'continueGeneration' });
+        button.disabled = true;
+        button.textContent = '⏳ 继续中...';
+    });
+    
+    container.appendChild(button);
+    
+    const inputContainer = DOM.inputContainer || document.querySelector('.input-container');
+    if (inputContainer) {
+        inputContainer.parentNode.insertBefore(container, inputContainer);
+    }
+}
+
+function hideContinueButton() {
+    const container = document.getElementById('continueBtnContainer');
+    if (container) {
+        container.remove();
+    }
 }
 
 function clearMessages() {

@@ -157,8 +157,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case 'showFileDiff':
                     await this.agentManager.showFileDiff(message.filePath);
                     break;
+                // ⭐ 继续生成 - 使用 resume_session
+                case 'continueGeneration':
+                    await this.handleContinueGeneration();
+                    break;
+
             }
         });
+    }
+
+    /**
+     * ⭐ 处理继续生成
+     */
+    private async handleContinueGeneration(): Promise<void> {
+        try {
+            // 显示提示
+            // this.sendToWebview('addMessage', {
+            //     role: 'system',
+            //     content: '⏳ 正在继续生成...'
+            // });
+            
+            // ⭐ 调用 AgentManager 的 continueGeneration
+            // 内部会调用 resume_session
+            await this.agentManager.continueGeneration();
+            
+        } catch (error) {
+            console.error('Failed to continue generation:', error);
+            this.sendToWebview('addMessage', {
+                role: 'system',
+                content: `❌ 继续生成失败: ${error instanceof Error ? error.message : String(error)}`
+            });
+        }
     }
 
     // ChatViewProvider.ts
@@ -301,7 +330,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     private async handleCreateSession(name?: string): Promise<void> {
-
+        try {
             // 先检查当前是否有会话
             const sessions = await this.agentManager.loadAllSessions();
             const sessionCount = Array.isArray(sessions) ? sessions.length : 0;
@@ -470,6 +499,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             });
         });
 
+        // ⭐ 监听截断事件
+        this.agentManager.on('generationTruncated', (data) => {
+            console.log('generationTruncated==========')
+            this.sendToWebview('generationTruncated', {
+                sessionId: data.sessionId
+            });
+        });
+
+        this.agentManager.on('truncatedStateChanged', (data) => {
+            console.log('truncatedStateChanged==========')
+            this.sendToWebview('truncatedStateChanged', {
+                isTruncated: data.isTruncated
+            });
+        });
+
+        // ⭐ 监听恢复事件
+        this.agentManager.on('generationResumed', (data) => {
+             console.log('generationResumed==========')
+            this.sendToWebview('generationResumed', {
+                sessionId: data.sessionId
+            });
+        });
+
 
     }
 
@@ -496,6 +548,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         let thoughtResponse = '';
         
         const messageChunkListener = (data: { content: string }) => {
+            console.log("messageChunkListener: ", data.content);
             assistantResponse += data.content;
             this.messageBuffer += data.content;
             this.sendToWebview('updateAssistantMessage', { content: this.messageBuffer });
@@ -510,10 +563,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
         
         this.agentManager.on('messageChunk', messageChunkListener);
-        this.agentManager.on('thoughtChunk', thoughtChunkListener);
+        // this.agentManager.on('thoughtChunk', thoughtChunkListener);
         
         try {
-            await this.agentManager.sendPrompt(text);
+            await this.agentManager.sendPrompt(text).then((res) => {
+                if (res) {
+                    this.agentManager.off('messageChunk', messageChunkListener);
+                }
+                // 处理响应
+            });
             
             // 完成后刷新
             setTimeout(() => {
@@ -524,8 +582,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         } catch (error) {
             console.error('Error sending prompt:', error);
         } finally {
-            this.agentManager.off('messageChunk', messageChunkListener);
-            this.agentManager.off('thoughtChunk', thoughtChunkListener);
+            // this.agentManager.off('messageChunk', messageChunkListener);
+            // this.agentManager.off('thoughtChunk', thoughtChunkListener);
         }
     }
 

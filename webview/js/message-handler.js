@@ -55,6 +55,7 @@ let currentThoughtContent = '';
 // message-handler.js
 
 export function addMessage(role, content) {
+    console.log("开始添加数据+++++++++")
     // 使用 document.getElementById 直接获取
     const messagesDiv = document.getElementById('messages');
     
@@ -143,6 +144,10 @@ export function startAssistantMessage() {
 }
 
 export function updateAssistantMessage(content) {
+    console.log("content============")
+    console.log(currentMsgDiv)
+    console.log(content)
+    console.log("content====")
     if (currentMsgDiv) {
         const renderedContent = renderMarkdown(content);
         currentMsgDiv.innerHTML = renderedContent;
@@ -152,6 +157,18 @@ export function updateAssistantMessage(content) {
         }
     }
 }
+
+// export function updateAssistantMessage(content) {
+//     const messagesDiv = document.getElementById('messages');
+//     if (window.currentMsgDiv) {
+//         const renderedContent = renderMarkdown(content);
+//         window.currentMsgDiv.innerHTML = renderedContent;
+//         highlightCodeBlocks(window.currentMsgDiv);
+//         if (DOM.messagesDiv.scrollTop + DOM.messagesDiv.clientHeight >= DOM.messagesDiv.scrollHeight - 5) {
+//             DOM.messagesDiv.scrollTop = DOM.messagesDiv.scrollHeight;
+//         }
+//     }
+// }
 
 export function showThoughtMessage(chunk) {
     if (!currentThoughtDiv) {
