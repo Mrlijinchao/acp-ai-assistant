@@ -407,6 +407,36 @@ class GetCurrentFileTool implements Tool {
 }
 
 /**
+ * 获取文件相对于工作区根目录的相对路径
+ */
+function getRelativePath(uri: vscode.Uri): string {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    
+    // 没有打开工作区，直接返回文件名
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        return uri.fsPath;
+    }
+    
+    // 遍历所有工作区文件夹，找到包含该文件的那个
+    for (const folder of workspaceFolders) {
+        const folderPath = folder.uri.fsPath;
+        const filePath = uri.fsPath;
+        
+        // 判断文件是否在该工作区下
+        const relative = path.relative(folderPath, filePath);
+        
+        // relative 不以 '..' 开头，说明文件在工作区内
+        if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
+            // 统一使用正斜杠，方便跨平台和 Agent 处理
+            return relative.split(path.sep).join('/');
+        }
+    }
+    
+    // 文件不在任何工作区内（比如打开了外部文件），返回绝对路径
+    return uri.fsPath;
+}
+
+/**
  * 获取工作区信息工具
  */
 class GetWorkspaceInfoTool implements Tool {

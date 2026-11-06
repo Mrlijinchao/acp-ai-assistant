@@ -4,9 +4,11 @@ import { Configuration } from './config/Configuration';
 import { ChatViewProvider } from './webview/ChatViewProvider';
 import { CommandManager } from './commands';
 import { Logger } from './utils/logger';
+import { ChatHistory } from './storage/ChatHistory';
 
 let agentManager: AgentManager;
 let configuration: Configuration;
+let chatHistory: ChatHistory;
 let commandManager: CommandManager;
 let logger: Logger;
 
@@ -16,8 +18,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // 初始化模块
     configuration = new Configuration();
+    chatHistory = new ChatHistory(context);
     agentManager = new AgentManager(configuration);
-    commandManager = new CommandManager(agentManager);
+    commandManager = new CommandManager(agentManager,chatHistory);
     
     // 注册 Webview View Provider
     const chatProvider = new ChatViewProvider(

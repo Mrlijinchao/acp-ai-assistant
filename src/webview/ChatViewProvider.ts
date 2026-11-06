@@ -320,7 +320,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         try {
             const sessions = await this.agentManager.loadAllSessions();
             if (sessions && sessions.length > 0) {
-                return sessions[0].id;
+                return sessions[0].sessionId;
             }
             return null;
         } catch (error) {

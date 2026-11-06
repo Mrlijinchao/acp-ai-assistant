@@ -5,7 +5,6 @@ import { Logger } from '../utils/logger';
 import type { SessionInfo, AgentEvent } from './types';
 import { ToolManager } from '../tools';
 import { FileBackupManager } from '../tools/FileBackupManager';
-import { ChatHistory } from '../storage/ChatHistory';
 
 import * as path from 'path';
 
@@ -18,13 +17,11 @@ export class AgentManager {
     private isStarting = false;
     private currentTaskId: string | null = null;
     private backupManager: FileBackupManager | null = null;
-    private chatHistory: ChatHistory | null = null;
     private currentSessionId: string | null = null; // 当前活跃的会话ID
     private isGenerationTruncated = false;
 
-    constructor(private configuration: Configuration, chatHistory: ChatHistory) {
+    constructor(private configuration: Configuration) {
         this.logger = new Logger('AgentManager');
-        this.chatHistory = chatHistory;
     }
 
     async start(agentName: string): Promise<void> {
@@ -188,7 +185,7 @@ async loadSession(sessionId: string): Promise<any> {
      * ⭐ 获取当前会话ID
      */
     getCurrentSessionId(): string | null {
-        return this.currentSessionId || this.sessionInfo?.id || null;
+        return this.currentSessionId || this.sessionInfo?.sessionId || null;
     }
 
     /**
@@ -226,9 +223,12 @@ async loadSession(sessionId: string): Promise<any> {
             const newSessionId = result?.sessionId || `session-${Date.now()}`;
             this.currentSessionId = newSessionId;
             this.sessionInfo = {
-                id: newSessionId,
+                sessionId: newSessionId,
                 cwd: cwd,
-                createdAt: new Date()
+                createdAt: new Date(),
+                messageCount: '0',
+                title: "",
+                updatedAt: new Date()
             };
 
             this.logger.info(`New session created: ${newSessionId}`);
@@ -393,7 +393,7 @@ async loadSession(sessionId: string): Promise<any> {
             throw new Error('Agent not ready');
         }
 
-        const sessionId = this.currentSessionId || this.sessionInfo.id;
+        const sessionId = this.currentSessionId || this.sessionInfo.sessionId;
         if (!sessionId) {
             throw new Error('No active session');
         }
@@ -849,16 +849,19 @@ async loadSession(sessionId: string): Promise<any> {
             });
 
             this.sessionInfo = {
-                id: sessionResult.sessionId,
+                sessionId: sessionResult.sessionId,
                 cwd,
-                createdAt: new Date()
+                createdAt: new Date(),
+                messageCount: '0',
+                title: "",
+                updatedAt: new Date()
             };
             
             // 设置当前会话ID
             this.currentSessionId = sessionResult.sessionId;
 
             this.logger.info('Session created:', this.sessionInfo);
-            this.emit('ready', { type: 'ready', sessionId: this.sessionInfo.id });
+            this.emit('ready', { type: 'ready', sessionId: this.sessionInfo.sessionId });
             
         } catch (error) {
             this.logger.error('Handshake failed:', error);
@@ -1063,7 +1066,7 @@ async loadSession(sessionId: string): Promise<any> {
     }
 
     getSessionId(): string | null {
-        return this.sessionInfo?.id ?? null;
+        return this.sessionInfo?.sessionId ?? null;
     }
 
     on<K extends keyof AgentEventMap>(event: K, listener: (event: AgentEventMap[K]) => void): void {
