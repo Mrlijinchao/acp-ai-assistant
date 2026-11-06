@@ -35,7 +35,7 @@ Configure the extension in VS Code settings (`Ctrl+,`):
                     "http://localhost:8000",
                 ],
             "env": {
-                "DASHSCOPE_API_KEY": "sk-90a24aca591a474494f0b16c81b49a58",
+                "DASHSCOPE_API_KEY": "xxxxxx",
                 "QWEN_MODEL": "qwen-plus",
                 "MCP_SERVER_URL": "http://localhost:9876"
             }
